@@ -13,8 +13,10 @@ outputs/
 checkpoints/
 logs/
 wandb/
+eval/
 *.pth
 *.ckpt
+*.pkl
 
 # IDE
 .vscode/
