@@ -1,0 +1,94 @@
+# SoundSpaces Dataset - Claude Configuration
+
+## Project Overview
+This is a PyTorch-based training framework for depth estimation from audio/visual inputs using the SoundSpaces dataset. The project supports:
+- Audio spectrogram input (binaural audio)
+- RGB image input (pinhole or ERP/panoramic)
+- Depth estimation using UNet architecture
+- Train/val/test splits with configurable ratios
+
+## Key Technologies
+- **Framework**: PyTorch, Hydra (configuration management)
+- **Model**: UNet (unet_128, unet_256)
+- **Audio Processing**: torchaudio, spectrograms (linear/mel)
+- **Image Processing**: PIL/Pillow, torchvision transforms
+- **Dataset**: SoundSpaces (scene-based organization)
+
+## Project Structure
+```
+SoundSpacesDataset/
+├── dataloader/
+│   ├── SoundSpaces_Dataset.py  # Main dataset class
+│   ├── utils_dataset.py        # Transform utilities
+│   └── utils_dataset.py
+├── models/
+│   ├── unetbaseline_model.py   # UNet model definition
+│   └── utils_models.py         # Model utilities
+├── conf/
+│   ├── config.yaml             # Main config
+│   ├── dataset/soundspaces.yaml # Dataset config
+│   ├── mode/                    # Train/test/eval configs
+│   └── model/                   # Model configs
+├── train.py                     # Main training script
+├── test.py                      # Testing script
+└── eval.py                      # Evaluation script
+```
+
+## Key Conventions
+
+### Configuration (Hydra)
+- Use Hydra for configuration management
+- Config files in `conf/` directory
+- Override configs via command line: `dataset.input_type=rgb`
+- Use `+` prefix to add new config fields: `+dataset.new_field=value`
+
+### Dataset
+- Supports both pinhole and ERP (Equirectangular Projection) images
+- Audio: binaural stereo (2 channels)
+- Depth: normalized to [0, 1] range if `depth_norm=True`
+- Images resized to `images_size` (can be [H, W] tuple or single value)
+- Depth range: `min_depth` to `max_depth` (default: 0.01m to 10.0m)
+
+### Input Types
+- `input_type`: 'audio' or 'rgb'
+- `input_image_type`: 'pinhole' or 'erp' (only for RGB input)
+- `depth_type`: 'pinhole' or 'erp' (for ground truth depth)
+
+### Augmentation
+- Training only: `use_augmentation=True`
+- RGB: horizontal flip (50% probability)
+- Audio: channel swap (50% probability)
+
+### File Naming
+- Audio: `audio_{step_idx:03d}.wav`
+- Depth: `pinhole_depth_{step_idx:03d}.npy` or `erp_depth_{step_idx:03d}.npy`
+- RGB: `pinhole_{step_idx:03d}.png` or `erp_{step_idx:03d}.png`
+
+## Code Style
+- Follow PEP 8 Python style guide
+- Use type hints where appropriate
+- Add docstrings for functions and classes
+- Use descriptive variable names
+- Handle OmegaConf ListConfig for image sizes (convert to tuple)
+
+## Important Notes
+- UNet model requires minimum height of 256 for `unet_256` (8 downsamplings)
+- Depth values are in meters
+- Audio sample rate: 48000 Hz
+- STFT parameters: n_fft=512, hop_length=160, win_length=400
+- Validation plots saved to `outputs/{experiment_name}/validation_plots/epoch_{epoch:05d}/`
+- Checkpoints saved to `checkpoints/{experiment_name}/`
+
+## Common Tasks
+- Training: Use `train.py` with Hydra configs
+- Testing: Use `test.py` with checkpoint path
+- Evaluation: Use `eval.py` for detailed metrics
+- Visualization: Automatic during validation (100 samples by default)
+
+## Dependencies
+- PyTorch >= 2.0.0
+- torchvision >= 0.15.0
+- torchaudio >= 2.0.0
+- hydra-core >= 1.3.0
+- omegaconf >= 2.3.0
+- tensorboard >= 2.10.0

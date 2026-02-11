@@ -1,0 +1,11 @@
+# Eval Settings (for detailed evaluation)
+mode: eval
+experiment_name: # Experiment name to load
+
+eval_split: test # Evaluation on 'train', 'val', or 'test' set
+checkpoints: 50 # Epoch to load
+criterion: L1 # Criterion for evaluation
+stat_dir: ./eval/ # Folder to save evaluation results
+
+num_threads: 4
+batch_size: 16
