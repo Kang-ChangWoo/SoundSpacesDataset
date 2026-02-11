@@ -1,0 +1,29 @@
+name: soundspaces
+dataset_dir: /home/rvi-lab/workspace/sound-spaces/dataset  # Path to dataset with scene directories
+
+# Single scene test mode - for quick testing with one scene
+single_scene_test_mode: False # If True, use only one scene and split samples 8:1:1 (train:val:test)
+single_scene_name: 17DRP5sb8fy # Scene name to use in single_scene_test_mode (if null, uses first available scene)
+
+# Use same scene and samples for all splits (train/val/test) - for verification
+use_same_samples_all_splits: True # If True, train/val/test all use the same scene and same samples (no splitting)
+
+# Input type: 'audio' or 'rgb'
+input_type: audio # Use 'audio' for spectrogram input or 'rgb' for RGB image input
+
+# Input image type (only used when input_type='rgb'): 'pinhole' or 'erp'
+# If None, uses depth_type as default
+# Set to 'erp' to use ERP (Equirectangular Projection) images as input
+# Set to 'pinhole' to use pinhole images as input
+input_image_type: erp # 'pinhole', 'erp', or None (defaults to depth_type)
+
+# transform parameters
+audio_format: spectrogram # Audio processing. Can be 'spectrogram', 'mel_spectrogram', or 'waveform'
+preprocess: resize # 'resize' or None
+depth_norm: True # Normalize depth using max_depth value
+images_size: [256, 512] # Image size if resize: [height, width] or single value for square. Minimum height: 256 for unet_256 (8 downsamplings)
+min_depth: 0.01 # Minimum depth value in meters (depths below this are set to 0)
+max_depth: 10.0 # Maximum depth value in meters (depths above this are clipped to this value)
+use_augmentation: True # Enable augmentation (horizontal flip for RGB, channel swap for audio) during training
+depth_type: pinhole # Depth type: 'pinhole' or 'erp' (Equirectangular Projection) - used for ground truth depth
+max_no_depth_ratio: 0.1 # Maximum ratio of no-depth pixels (0.1 = 10%). Samples with no-depth ratio >= this value will be excluded from train/val/test

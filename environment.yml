@@ -1,0 +1,20 @@
+name: soundspaces_dataset
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - numpy
+  - pandas
+  - matplotlib
+  - scipy
+  - pip:
+    - hydra-core>=1.3.0
+    - omegaconf>=2.3.0
+    - tensorboard>=2.10.0
+    - Pillow>=9.0.0
