@@ -83,13 +83,22 @@ def main(cfg: DictConfig) -> None:
     else:
         raise Exception('Training can be done only on soundspaces dataset')
 
+    num_workers = cfg.mode.num_threads
+    use_pin = torch.cuda.is_available()
     print(f'Train Dataset of {len(train_set)} instances')
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=cfg.mode.shuffle, num_workers=cfg.mode.num_threads) 
+    train_loader = DataLoader(
+        train_set, batch_size=batch_size, shuffle=cfg.mode.shuffle,
+        num_workers=num_workers, pin_memory=use_pin, persistent_workers=(num_workers > 0),
+        prefetch_factor=4 if num_workers > 0 else None,
+    )
 
     if cfg.mode.validation:
         print(f'Validation Dataset of {len(val_set)} instances')
-        # Validation should not shuffle to maintain consistent indexing for visualization
-        val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=cfg.mode.num_threads)
+        val_loader = DataLoader(
+            val_set, batch_size=batch_size, shuffle=False,
+            num_workers=num_workers, pin_memory=use_pin, persistent_workers=(num_workers > 0),
+            prefetch_factor=4 if num_workers > 0 else None,
+        )
 
 
     # ---------- Load Model ----------
@@ -468,15 +477,16 @@ def main(cfg: DictConfig) -> None:
                     torch.save(best_state, path_check + 'best_model.pth')
                     print(f'*** New best model saved at epoch {epoch} with abs_rel {best_abs_rel:.6f} ***')
 
-                # Log validation images to wandb
-                wandb.log({
-                    'Val/Pred_Depth': [wandb.Image(depth_pred_val[j, 0].cpu().numpy(), caption=f'pred_{j}') for j in range(min(4, depth_pred_val.shape[0]))],
-                    'Val/GT_Depth': [wandb.Image(gtdepth_val[j, 0].cpu().numpy(), caption=f'gt_{j}') for j in range(min(4, gtdepth_val.shape[0]))],
-                    'epoch': epoch
-                })
+                # Log validation images to wandb (unless disabled)
+                if getattr(cfg.mode, 'wandb_log_images', True):
+                    wandb.log({
+                        'Val/Pred_Depth': [wandb.Image(depth_pred_val[j, 0].cpu().numpy(), caption=f'pred_{j}') for j in range(min(4, depth_pred_val.shape[0]))],
+                        'Val/GT_Depth': [wandb.Image(gtdepth_val[j, 0].cpu().numpy(), caption=f'gt_{j}') for j in range(min(4, gtdepth_val.shape[0]))],
+                        'epoch': epoch
+                    })
 
-        # ------- Log training images to wandb periodically ------------
-        if epoch % cfg.mode.print_tensorboard == 0:
+        # ------- Log training images to wandb periodically (unless disabled) --------
+        if epoch % cfg.mode.print_tensorboard == 0 and getattr(cfg.mode, 'wandb_log_images', True):
             wandb.log({
                 'Train/Pred_Depth': [wandb.Image(depth_pred[j, 0].detach().cpu().numpy(), caption=f'pred_{j}') for j in range(min(4, depth_pred.shape[0]))],
                 'Train/GT_Depth': [wandb.Image(gtdepth[j, 0].cpu().numpy(), caption=f'gt_{j}') for j in range(min(4, gtdepth.shape[0]))],

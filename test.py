@@ -54,7 +54,13 @@ def main(cfg):
         raise Exception('Test can be done only on soundspaces dataset')
 
     print(f'Eval Dataset of {len(eval_set)} instances')
-    eval_loader = DataLoader(eval_set, batch_size=batch_size, shuffle=False, num_workers=cfg.mode.num_threads) 
+    num_workers = cfg.mode.num_threads
+    use_pin = torch.cuda.is_available()
+    eval_loader = DataLoader(
+        eval_set, batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, pin_memory=use_pin, persistent_workers=(num_workers > 0),
+        prefetch_factor=4 if num_workers > 0 else None,
+    )
 
     # ---------- Load Model ----------
     # Determine input channels based on input type

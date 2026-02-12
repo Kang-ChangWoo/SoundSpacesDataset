@@ -1,4 +1,7 @@
 import os
+import hashlib
+import pickle
+import time
 import torch
 import pandas as pd
 import torchaudio
@@ -8,6 +11,7 @@ import numpy as np
 import json
 from PIL import Image
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .utils_dataset import get_transform
 
@@ -211,142 +215,149 @@ class SoundSpacesDataset(Dataset):
                     print(f"Warning: Audio file '{audio_file}' doesn't match expected format 'audio_{step_idx:03d}.wav'. Skipping.")
                     continue
     
+    def _get_cache_path(self):
+        """Build a deterministic cache file path based on dataset config + split."""
+        key_str = (
+            f"{self.base_dir}|{self.split}|{self.depth_type}|{self.input_type}|"
+            f"{self.input_image_type}|"
+            f"{getattr(self.cfg.dataset, 'max_no_depth_ratio', 0.1)}|"
+            f"{sorted(s for s, _ in self.samples)[:3]}|{len(self.samples)}"
+        )
+        h = hashlib.md5(key_str.encode()).hexdigest()[:12]
+        cache_dir = os.path.join(self.base_dir, '.cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        return os.path.join(cache_dir, f"verified_{self.split}_{self.depth_type}_{self.input_type}_{h}.pkl")
+
+    def _verify_single_sample(self, sample, max_no_depth_ratio):
+        """Verify a single sample (designed for parallel execution).
+        Returns (scene_id, step_idx, status) where status is 'valid', 'missing', or 'invalid_depth'."""
+        scene_id, step_idx = sample
+        scene_dir = os.path.join(self.base_dir, scene_id)
+
+        # --- Check input file ---
+        if self.input_type == 'rgb':
+            rgb_path = None
+            if self.input_image_type == 'erp':
+                erp_rgb_dir = os.path.join(scene_dir, 'erp_rgb')
+                if os.path.exists(erp_rgb_dir):
+                    rgb_path = os.path.join(erp_rgb_dir, f'erp_{step_idx:03d}.png')
+            else:
+                for d in [os.path.join(scene_dir, 'pinhole_rgb'),
+                          os.path.join(scene_dir, 'pinhole', 'rgb'),
+                          os.path.join(scene_dir, 'rgb')]:
+                    if os.path.exists(d):
+                        rgb_path = os.path.join(d, f'pinhole_{step_idx:03d}.png')
+                        break
+            if rgb_path is None or not os.path.exists(rgb_path):
+                return (scene_id, step_idx, 'missing')
+            input_path = rgb_path
+        else:
+            audio_wav_dir = os.path.join(scene_dir, 'audio_wav')
+            audio_dir = os.path.join(scene_dir, 'audio')
+            expected = f'audio_{step_idx:03d}.wav'
+            if os.path.exists(audio_wav_dir):
+                audio_path = os.path.join(audio_wav_dir, expected)
+            elif os.path.exists(audio_dir):
+                audio_path = os.path.join(audio_dir, expected)
+            else:
+                return (scene_id, step_idx, 'missing')
+            if not os.path.exists(audio_path):
+                return (scene_id, step_idx, 'missing')
+            input_path = audio_path
+
+        # --- Check depth file ---
+        if self.depth_type == 'erp':
+            erp_depth_dir = os.path.join(scene_dir, 'erp_depth')
+            if not os.path.exists(erp_depth_dir):
+                return (scene_id, step_idx, 'missing')
+            depth_path = os.path.join(erp_depth_dir, f'erp_depth_{step_idx:03d}.npy')
+        else:
+            for d, fmt in [(os.path.join(scene_dir, 'pinhole_depth'), f'pinhole_depth_{step_idx:03d}.npy'),
+                           (os.path.join(scene_dir, 'pinhole', 'depth'), f'pinhole_depth_{step_idx:03d}.npy')]:
+                if os.path.exists(d):
+                    depth_path = os.path.join(d, fmt)
+                    break
+            else:
+                return (scene_id, step_idx, 'missing')
+
+        if not os.path.exists(input_path) or not os.path.exists(depth_path):
+            return (scene_id, step_idx, 'missing')
+
+        # --- Check no-depth ratio (mmap to avoid full copy) ---
+        try:
+            depth = np.load(depth_path, mmap_mode='r').astype(np.float32)
+            no_depth_mask = (depth <= 0.0) | np.isnan(depth) | np.isinf(depth)
+            no_depth_ratio = np.sum(no_depth_mask) / depth.size if depth.size > 0 else 1.0
+            if no_depth_ratio >= max_no_depth_ratio:
+                return (scene_id, step_idx, 'invalid_depth')
+            return (scene_id, step_idx, 'valid')
+        except Exception:
+            return (scene_id, step_idx, 'missing')
+
     def _verify_files(self):
-        """Verify that required files exist for all samples and filter out samples with too many invalid depth pixels"""
+        """Verify that required files exist for all samples and filter out samples with too many invalid depth pixels.
+        Uses a disk cache to skip re-verification on subsequent runs, and parallel I/O for the first run."""
+        max_no_depth_ratio = getattr(self.cfg.dataset, 'max_no_depth_ratio', 0.1)
+
+        # --- Try loading from cache ---
+        cache_path = self._get_cache_path()
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, 'rb') as f:
+                    cached = pickle.load(f)
+                if cached.get('max_no_depth_ratio') == max_no_depth_ratio:
+                    self.samples = cached['valid_samples']
+                    print(f"Loaded {len(self.samples)} verified samples from cache ({os.path.basename(cache_path)})")
+                    return
+            except Exception:
+                pass  # cache corrupt, re-verify
+
+        # --- Parallel verification ---
+        t0 = time.time()
+        num_workers = 4
+        print(f"Verifying {len(self.samples)} samples ({num_workers} threads)...")
+
         valid_samples = []
         missing_count = 0
         invalid_depth_count = 0
-        max_no_depth_ratio = getattr(self.cfg.dataset, 'max_no_depth_ratio', 0.1)  # Default 10% threshold
-        
-        for scene_id, step_idx in self.samples:
-            scene_dir = os.path.join(self.base_dir, scene_id)
-            
-            # Check input file (audio or RGB) based on input_type
-            if self.input_type == 'rgb':
-                # Check RGB file - use input_image_type (can be different from depth_type)
-                rgb_path = None
-                if self.input_image_type == 'erp':
-                    erp_rgb_dir = os.path.join(scene_dir, 'erp_rgb')
-                    if os.path.exists(erp_rgb_dir):
-                        rgb_path = os.path.join(erp_rgb_dir, f'erp_{step_idx:03d}.png')
-                else:  # pinhole (default)
-                    # Try pinhole_rgb first
-                    pinhole_rgb_dir = os.path.join(scene_dir, 'pinhole_rgb')
-                    if os.path.exists(pinhole_rgb_dir):
-                        rgb_path = os.path.join(pinhole_rgb_dir, f'pinhole_{step_idx:03d}.png')
-                    else:
-                        # Try alternative location: pinhole/rgb
-                        pinhole_dir_rgb = os.path.join(scene_dir, 'pinhole', 'rgb')
-                        if os.path.exists(pinhole_dir_rgb):
-                            rgb_path = os.path.join(pinhole_dir_rgb, f'pinhole_{step_idx:03d}.png')
-                        else:
-                            # Try just 'rgb' directory
-                            rgb_dir = os.path.join(scene_dir, 'rgb')
-                            if os.path.exists(rgb_dir):
-                                rgb_path = os.path.join(rgb_dir, f'pinhole_{step_idx:03d}.png')
-                
-                if rgb_path is None or not os.path.exists(rgb_path):
+
+        with ThreadPoolExecutor(max_workers=num_workers) as pool:
+            futures = {pool.submit(self._verify_single_sample, s, max_no_depth_ratio): s for s in self.samples}
+            for fut in as_completed(futures):
+                scene_id, step_idx, status = fut.result()
+                if status == 'valid':
+                    valid_samples.append((scene_id, step_idx))
+                elif status == 'missing':
                     missing_count += 1
-                    continue
-                
-                input_path = rgb_path
-            else:
-                # Check audio file (try both audio_wav and audio)
-                audio_wav_dir = os.path.join(scene_dir, 'audio_wav')
-                audio_dir = os.path.join(scene_dir, 'audio')
-                
-                expected_audio_filename = f'audio_{step_idx:03d}.wav'
-                audio_path = None
-                
-                if os.path.exists(audio_wav_dir):
-                    audio_path = os.path.join(audio_wav_dir, expected_audio_filename)
-                elif os.path.exists(audio_dir):
-                    audio_path = os.path.join(audio_dir, expected_audio_filename)
                 else:
-                    missing_count += 1
-                    continue
-                
-                # Verify the file exists with the expected name
-                # This ensures that the step_idx extracted in _add_scene_samples_to_list
-                # matches the file name used in __getitem__
-                if not os.path.exists(audio_path):
-                    missing_count += 1
-                    continue
-                
-                input_path = audio_path
-            
-            # Check depth file based on depth_type
-            if self.depth_type == 'erp':
-                erp_depth_dir = os.path.join(scene_dir, 'erp_depth')
-                if os.path.exists(erp_depth_dir):
-                    depth_path = os.path.join(erp_depth_dir, f'erp_depth_{step_idx:03d}.npy')
-                else:
-                    missing_count += 1
-                    continue
-            else:  # pinhole (default)
-                pinhole_depth_dir = os.path.join(scene_dir, 'pinhole_depth')
-                pinhole_dir_depth = os.path.join(scene_dir, 'pinhole', 'depth')
-                
-                if os.path.exists(pinhole_depth_dir):
-                    depth_path = os.path.join(pinhole_depth_dir, f'pinhole_depth_{step_idx:03d}.npy')
-                elif os.path.exists(pinhole_dir_depth):
-                    depth_path = os.path.join(pinhole_dir_depth, f'pinhole_depth_{step_idx:03d}.npy')
-                else:
-                    missing_count += 1
-                    continue
-            
-            # Check if files exist
-            if not os.path.exists(input_path) or not os.path.exists(depth_path):
-                missing_count += 1
-                continue
-            
-            # Load depth file and check no-depth ratio
-            try:
-                depth = np.load(depth_path).astype(np.float32)
-                
-                # Count pixels with no depth (depth <= 0 or invalid)
-                no_depth_mask = (depth <= 0.0) | np.isnan(depth) | np.isinf(depth)
-                no_depth_count = np.sum(no_depth_mask)
-                total_pixels = depth.size
-                no_depth_ratio = no_depth_count / total_pixels if total_pixels > 0 else 1.0
-                
-                # Filter out samples with no-depth ratio >= threshold
-                if no_depth_ratio >= max_no_depth_ratio:
                     invalid_depth_count += 1
-                    continue
-                
-                # Sample is valid
-                valid_samples.append((scene_id, step_idx))
-            except Exception as e:
-                # If depth file cannot be loaded, skip this sample
-                print(f"Warning: Failed to load depth file {depth_path}: {e}")
-                missing_count += 1
-                continue
-        
+
+        elapsed = time.time() - t0
+
         if missing_count > 0:
             print(f"Warning: {missing_count} samples have missing files")
         if invalid_depth_count > 0:
             print(f"Warning: {invalid_depth_count} samples filtered out due to no-depth ratio >= {max_no_depth_ratio*100:.1f}%")
-        
-        # Sort samples to ensure consistent ordering across train/val/test splits
-        # This guarantees that the same index in different splits refers to the same (scene_id, step_idx) pair
-        valid_samples.sort(key=lambda x: (x[0], x[1]))  # Sort by (scene_id, step_idx)
-        
+
+        valid_samples.sort(key=lambda x: (x[0], x[1]))
         self.samples = valid_samples
-        print(f"Using {len(self.samples)} valid samples after verification")
-        
-        # If no valid samples found, provide helpful error message
+        print(f"Using {len(self.samples)} valid samples after verification ({elapsed:.1f}s)")
+
+        # --- Save to cache ---
+        try:
+            with open(cache_path, 'wb') as f:
+                pickle.dump({'valid_samples': valid_samples, 'max_no_depth_ratio': max_no_depth_ratio}, f)
+            print(f"Verification cache saved to {os.path.basename(cache_path)}")
+        except Exception as e:
+            print(f"Warning: Failed to save verification cache: {e}")
+
+        # --- Error if empty ---
         if len(self.samples) == 0:
             if self.input_type == 'rgb':
-                # Check if RGB directory exists at all
                 sample_scene = self.scene_ids[0] if self.scene_ids else None
                 if sample_scene:
                     scene_dir = os.path.join(self.base_dir, sample_scene)
-                    if self.depth_type == 'erp':
-                        rgb_dir = os.path.join(scene_dir, 'erp_rgb')
-                    else:
-                        rgb_dir = os.path.join(scene_dir, 'pinhole_rgb')
-                    
+                    rgb_dir = os.path.join(scene_dir, 'erp_rgb' if self.depth_type == 'erp' else 'pinhole_rgb')
                     if not os.path.exists(rgb_dir):
                         raise ValueError(
                             f"No valid samples found! RGB directory not found: {rgb_dir}\n"
@@ -357,7 +368,6 @@ class SoundSpacesDataset(Dataset):
                             f"  4. Or switch to audio input: dataset.input_type=audio"
                         )
                     else:
-                        # Directory exists but no matching files
                         rgb_files = os.listdir(rgb_dir) if os.path.exists(rgb_dir) else []
                         print(f"RGB directory exists but found {len(rgb_files)} files")
                         if rgb_files:

@@ -1,5 +1,5 @@
 name: soundspaces
-dataset_dir: /home/rvi-lab/workspace/sound-spaces/dataset  # Path to dataset with scene directories
+dataset_dir: ${oc.env:SOUNDSPACES_DATASET_DIR,/home/rvi-lab/workspace/sound-spaces/dataset}  # Path to dataset with scene directories
 
 # Single scene test mode - for quick testing with one scene
 single_scene_test_mode: False # If True, use only one scene and split samples 8:1:1 (train:val:test)

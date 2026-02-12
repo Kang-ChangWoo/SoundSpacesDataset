@@ -13,6 +13,15 @@ conda env create -f environment.yml
 conda activate soundspaces_dataset
 ```
 
+## Server/Inference (Recommended): env name `ss`
+
+```bash
+cd /root/storage/implementation/shared_audio/SoundSpacesDataset
+conda env create -f environment_ss.yml
+conda activate ss
+python -c "import torch, hydra, omegaconf; print('OK', torch.__version__)"
+```
+
 ## Method 2: Manual Creation Step-by-Step
 
 ### Step 1: Create the environment
