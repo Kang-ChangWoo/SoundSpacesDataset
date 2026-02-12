@@ -205,8 +205,8 @@ def main(cfg: DictConfig) -> None:
 
     nb_epochs = cfg.mode.epochs
 
-    # Best model tracking
-    best_val_loss = float('inf')
+    # Best model tracking (based on abs_rel - lower is better)
+    best_abs_rel = float('inf')
     best_epoch = -1
 
     for param_group in optimizer.param_groups:
@@ -452,21 +452,21 @@ def main(cfg: DictConfig) -> None:
                     'epoch': epoch
                 })
 
-                # Save best model based on validation loss
-                current_val_loss = np.mean(batch_loss_val)
-                if current_val_loss < best_val_loss:
-                    best_val_loss = current_val_loss
+                # Save best model based on abs_rel (lower is better)
+                current_abs_rel = val_errors['ABS_REL']
+                if current_abs_rel < best_abs_rel:
+                    best_abs_rel = current_abs_rel
                     best_epoch = epoch
                     best_state = {
                         'epoch': epoch,
-                        'best_val_loss': best_val_loss,
+                        'best_abs_rel': best_abs_rel,
                         'state_dict': model.state_dict(),
                         'optimizer': optimizer.state_dict()
                     }
                     path_check = './checkpoints/' + experiment_name + '/'
                     os.makedirs(path_check, exist_ok=True)
                     torch.save(best_state, path_check + 'best_model.pth')
-                    print(f'*** New best model saved at epoch {epoch} with val loss {best_val_loss:.6f} ***')
+                    print(f'*** New best model saved at epoch {epoch} with abs_rel {best_abs_rel:.6f} ***')
 
                 # Log validation images to wandb
                 wandb.log({
@@ -499,7 +499,7 @@ def main(cfg: DictConfig) -> None:
 
     # Print best model summary
     if best_epoch > 0:
-        print(f'\n*** Training complete. Best model: epoch {best_epoch}, val loss {best_val_loss:.6f} ***')
+        print(f'\n*** Training complete. Best model: epoch {best_epoch}, abs_rel {best_abs_rel:.6f} ***')
         print(f'*** Best model saved at: ./checkpoints/{experiment_name}/best_model.pth ***')
 
     wandb.finish()
