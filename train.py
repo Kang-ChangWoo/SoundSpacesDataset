@@ -2,7 +2,7 @@ from dataloader.SoundSpaces_Dataset import SoundSpacesDataset
 
 from models.utils_models import *
 
-from models.unetbaseline_model import *
+from models.v260120_unetbaseline_model import *
 
 from utils_criterion import compute_errors, get_valid_depth_mask, BerHuLoss, GradientLoss, SHAuxiliaryLoss
 
@@ -170,6 +170,11 @@ def main(cfg: DictConfig) -> None:
             "sh_degree": getattr(cfg.model, 'sh_degree', None),
             "images_size": list(cfg.dataset.images_size),
             "max_depth": cfg.dataset.max_depth,
+            "preprocess": cfg.dataset.preprocess,
+            "filter_wall_samples": getattr(cfg.dataset, 'filter_wall_samples', False),
+            "wall_depth_std_thresh": getattr(cfg.dataset, 'wall_depth_std_thresh', 0.3),
+            "wall_concentration_thresh": getattr(cfg.dataset, 'wall_concentration_thresh', 0.85),
+            "wall_depth_range_thresh": getattr(cfg.dataset, 'wall_depth_range_thresh', 0.5),
         }
     )
 
@@ -188,6 +193,7 @@ def main(cfg: DictConfig) -> None:
     file.write("Image processing: {}\n".format(cfg.dataset.preprocess))
     file.write("Image resize: {}\n".format(cfg.dataset.images_size))
     file.write("Depth norm: {}\n".format(cfg.dataset.depth_norm))
+    file.write("Filter wall samples: {}\n".format(getattr(cfg.dataset, 'filter_wall_samples', False)))
     input_type = getattr(cfg.dataset, 'input_type', 'audio')
     file.write("Input type: {}\n".format(input_type))
     if input_type == 'audio':
@@ -208,7 +214,7 @@ def main(cfg: DictConfig) -> None:
         checkpoint_epoch = 1
     else:
         load_epoch = cfg.mode.checkpoints
-        checkpoint = torch.load('./checkpoints/' + experiment_name + '/checkpoint_' + str(load_epoch) + '.pth')
+        checkpoint = torch.load('./outputs/' + experiment_name + '/checkpoint_' + str(load_epoch) + '.pth')
         model.load_state_dict(checkpoint["state_dict"])
         checkpoint_epoch = checkpoint["epoch"] + 1 
 
@@ -472,7 +478,7 @@ def main(cfg: DictConfig) -> None:
                         'state_dict': model.state_dict(),
                         'optimizer': optimizer.state_dict()
                     }
-                    path_check = './checkpoints/' + experiment_name + '/'
+                    path_check = './outputs/' + experiment_name + '/'
                     os.makedirs(path_check, exist_ok=True)
                     torch.save(best_state, path_check + 'best_model.pth')
                     print(f'*** New best model saved at epoch {epoch} with abs_rel {best_abs_rel:.6f} ***')
@@ -501,16 +507,16 @@ def main(cfg: DictConfig) -> None:
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict()
             }
-            path_check = './checkpoints/' + experiment_name + '/'
+            path_check = './outputs/' + experiment_name + '/'
             isExist = os.path.exists(path_check)
             if not isExist:
                 os.makedirs(path_check)
-            torch.save(state, './checkpoints/' + experiment_name + '/checkpoint_' + str(epoch) + '.pth')
+            torch.save(state, './outputs/' + experiment_name + '/checkpoint_' + str(epoch) + '.pth')
 
     # Print best model summary
     if best_epoch > 0:
         print(f'\n*** Training complete. Best model: epoch {best_epoch}, abs_rel {best_abs_rel:.6f} ***')
-        print(f'*** Best model saved at: ./checkpoints/{experiment_name}/best_model.pth ***')
+        print(f'*** Best model saved at: ./outputs/{experiment_name}/best_model.pth ***')
 
     wandb.finish()
 

@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .sh_utils import build_real_sh_basis, SHCoeffExtractor, SHFusionModule
+from .v260120_sh_utils import build_real_sh_basis, SHCoeffExtractor, SHFusionModule
 
 
 class UnetSHGenerator(nn.Module):

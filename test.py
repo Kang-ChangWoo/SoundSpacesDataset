@@ -2,7 +2,7 @@ from dataloader.SoundSpaces_Dataset import SoundSpacesDataset
 
 from models.utils_models import *
 
-from models.unetbaseline_model import *
+from models.v260120_unetbaseline_model import *
 
 from utils_tensorboard import *
 from utils_criterion import compute_errors, get_valid_depth_mask, BerHuLoss
@@ -98,9 +98,9 @@ def main(cfg):
                              cfg.mode.optimizer + '_' + cfg.mode.experiment_name)
         
         if str(load_epoch) == 'best':
-            checkpoint_path = './checkpoints/' + experiment_name + '/best_model.pth'
+            checkpoint_path = './outputs/' + experiment_name + '/best_model.pth'
         else:
-            checkpoint_path = './checkpoints/' + experiment_name + '/checkpoint_' + str(load_epoch) + '.pth'
+            checkpoint_path = './outputs/' + experiment_name + '/checkpoint_' + str(load_epoch) + '.pth'
         print(f'Loading checkpoint from: {checkpoint_path}')
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint["state_dict"])
