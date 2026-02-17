@@ -105,7 +105,7 @@ def analyze_dataset(dataset_dir, depth_type, std_thresh, concentration_thresh, r
     total_all = 0
     wall_all = 0
 
-    for scene_id in scenes:
+    for si, scene_id in enumerate(scenes):
         scene_dir = os.path.join(dataset_dir, scene_id)
         depth_files = find_depth_files(scene_dir, depth_type)
 
@@ -133,6 +133,9 @@ def analyze_dataset(dataset_dir, depth_type, std_thresh, concentration_thresh, r
         n_wall = len(wall_samples)
         total_all += n_total
         wall_all += n_wall
+
+        pct = n_wall / n_total * 100 if n_total > 0 else 0
+        print(f"  [{si+1}/{len(scenes)}] {scene_id}: {n_wall}/{n_total} wall ({pct:.1f}%)", flush=True)
 
         scene_stats[scene_id] = {
             'total': n_total,
