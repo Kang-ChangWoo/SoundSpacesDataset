@@ -50,6 +50,12 @@ class SoundSpacesDataset(Dataset):
             # Default to depth_type if not specified
             self.input_image_type = self.depth_type
         
+        # Wall sample filtering (strict AND criteria for wall detection)
+        self.filter_wall_samples = getattr(cfg.dataset, 'filter_wall_samples', False)
+        self.wall_depth_std_thresh = getattr(cfg.dataset, 'wall_depth_std_thresh', 0.3)
+        self.wall_concentration_thresh = getattr(cfg.dataset, 'wall_concentration_thresh', 0.85)
+        self.wall_depth_range_thresh = getattr(cfg.dataset, 'wall_depth_range_thresh', 0.5)
+        
         # Check if single scene test mode is enabled
         self.single_scene_test_mode = getattr(cfg.dataset, 'single_scene_test_mode', False)
         self.use_same_samples_all_splits = getattr(cfg.dataset, 'use_same_samples_all_splits', False)
@@ -215,12 +221,218 @@ class SoundSpacesDataset(Dataset):
                     print(f"Warning: Audio file '{audio_file}' doesn't match expected format 'audio_{step_idx:03d}.wav'. Skipping.")
                     continue
     
+    @staticmethod
+    def _is_wall_depth(depth, std_thresh=0.3, concentration_thresh=0.85, range_thresh=0.5):
+        """Check if depth map represents a wall-facing view (uniform depth distribution).
+        
+        Uses strict AND criteria - ALL conditions must be met to classify as wall sample.
+        This ensures only truly wall-dominated images are filtered out.
+        
+        Criteria:
+            1. depth_std < std_thresh: Very low depth variance (flat surface)
+            2. concentrated_ratio > concentration_thresh: High % of pixels within ±0.3m of median
+            3. depth_iqr < range_thresh: Very narrow interquartile range
+        
+        Args:
+            depth: Raw depth array in meters
+            std_thresh: Maximum depth standard deviation (meters)
+            concentration_thresh: Minimum fraction of pixels within ±0.3m of median
+            range_thresh: Maximum IQR (interquartile range, meters)
+        
+        Returns:
+            is_wall: Boolean indicating if this is a wall sample
+            stats: Dictionary of depth statistics for reference
+        """
+        valid = depth[(depth > 0) & ~np.isnan(depth) & ~np.isinf(depth)]
+        if len(valid) < 100:
+            return False, {}
+        
+        valid_ratio = float(len(valid) / depth.size)
+        if valid_ratio < 0.3:
+            return False, {}
+        
+        depth_std = float(np.std(valid))
+        depth_mean = float(np.mean(valid))
+        depth_median = float(np.median(valid))
+        depth_iqr = float(np.percentile(valid, 75) - np.percentile(valid, 25))
+        depth_p5 = float(np.percentile(valid, 5))
+        depth_p95 = float(np.percentile(valid, 95))
+        
+        # Concentration: fraction of valid pixels within ±0.3m of median
+        narrow_band = 0.3  # meters
+        concentrated = float(np.sum(np.abs(valid - depth_median) < narrow_band) / len(valid))
+        
+        stats = {
+            'depth_std': round(depth_std, 4),
+            'depth_mean': round(depth_mean, 4),
+            'depth_median': round(depth_median, 4),
+            'depth_iqr': round(depth_iqr, 4),
+            'depth_range_p5_p95': round(depth_p95 - depth_p5, 4),
+            'concentrated_ratio': round(concentrated, 4),
+            'valid_ratio': round(valid_ratio, 4),
+        }
+        
+        # Strict AND: ALL conditions must be met to classify as wall
+        is_wall = (
+            depth_std < std_thresh and
+            concentrated > concentration_thresh and
+            depth_iqr < range_thresh
+        )
+        
+        return is_wall, stats
+    
+    def _save_wall_samples_reference(self, wall_samples_info):
+        """Save filtered wall samples to a JSON reference file and depth/RGB images for inspection.
+        
+        Args:
+            wall_samples_info: List of dicts with scene_id, step_idx, and depth stats
+        """
+        if not wall_samples_info:
+            return
+        ref_dir = os.path.join(self.base_dir, '.cache')
+        os.makedirs(ref_dir, exist_ok=True)
+        ref_path = os.path.join(ref_dir, f'filtered_wall_samples_{self.split}_{self.depth_type}.json')
+        try:
+            with open(ref_path, 'w') as f:
+                json.dump({
+                    'split': self.split,
+                    'depth_type': self.depth_type,
+                    'filter_params': {
+                        'wall_depth_std_thresh': self.wall_depth_std_thresh,
+                        'wall_concentration_thresh': self.wall_concentration_thresh,
+                        'wall_depth_range_thresh': self.wall_depth_range_thresh,
+                    },
+                    'num_filtered': len(wall_samples_info),
+                    'samples': wall_samples_info,
+                }, f, indent=2)
+            print(f"Wall samples reference saved to: {ref_path} ({len(wall_samples_info)} samples)")
+        except Exception as e:
+            print(f"Warning: Failed to save wall samples reference: {e}")
+        
+        # Save depth/RGB images for visual inspection
+        self._save_wall_sample_images(wall_samples_info)
+    
+    def _save_wall_sample_images(self, wall_samples_info):
+        """Save depth map and RGB images of wall-detected samples to a folder.
+        
+        Each sample is saved as a single figure with:
+          - Depth map (jet colormap)
+          - RGB image (if available)
+          - Depth histogram
+          - Stats annotation
+        
+        Args:
+            wall_samples_info: List of dicts with scene_id, step_idx, and depth stats
+        """
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        
+        img_dir = os.path.join(self.base_dir, '.cache',
+                               f'wall_samples_vis_{self.split}_{self.depth_type}')
+        os.makedirs(img_dir, exist_ok=True)
+        
+        max_depth = getattr(self.cfg.dataset, 'max_depth', 10.0)
+        saved = 0
+        
+        for i, info in enumerate(wall_samples_info):
+            scene_id = info['scene_id']
+            step_idx = info['step_idx']
+            scene_dir = os.path.join(self.base_dir, scene_id)
+            
+            # --- Load depth ---
+            depth = None
+            if self.depth_type == 'erp':
+                dp = os.path.join(scene_dir, 'erp_depth', f'erp_depth_{step_idx:03d}.npy')
+                if os.path.exists(dp):
+                    depth = np.load(dp).astype(np.float32)
+            else:
+                for d_dir in [os.path.join(scene_dir, 'pinhole_depth'),
+                              os.path.join(scene_dir, 'pinhole', 'depth')]:
+                    dp = os.path.join(d_dir, f'pinhole_depth_{step_idx:03d}.npy')
+                    if os.path.exists(dp):
+                        depth = np.load(dp).astype(np.float32)
+                        break
+            if depth is None:
+                continue
+            
+            # --- Load RGB (optional) ---
+            rgb = None
+            if self.depth_type == 'erp':
+                rp = os.path.join(scene_dir, 'erp_rgb', f'erp_{step_idx:03d}.png')
+                if os.path.exists(rp):
+                    rgb = np.array(Image.open(rp))
+            else:
+                for r_dir in [os.path.join(scene_dir, 'pinhole_rgb'),
+                              os.path.join(scene_dir, 'pinhole', 'rgb'),
+                              os.path.join(scene_dir, 'rgb')]:
+                    rp = os.path.join(r_dir, f'pinhole_{step_idx:03d}.png')
+                    if os.path.exists(rp):
+                        rgb = np.array(Image.open(rp))
+                        break
+            
+            # --- Build figure ---
+            has_rgb = rgb is not None
+            ncols = 3 if has_rgb else 2
+            fig, axes = plt.subplots(1, ncols, figsize=(6 * ncols, 5))
+            
+            col = 0
+            # RGB image
+            if has_rgb:
+                axes[col].imshow(rgb)
+                axes[col].set_title('RGB Image')
+                axes[col].axis('off')
+                col += 1
+            
+            # Depth map
+            depth_vis = np.copy(depth)
+            depth_vis[depth_vis <= 0] = np.nan
+            im = axes[col].imshow(depth_vis, cmap='jet', vmin=0, vmax=max_depth)
+            axes[col].set_title('Depth Map')
+            axes[col].axis('off')
+            fig.colorbar(im, ax=axes[col], fraction=0.046, pad=0.04, label='m')
+            col += 1
+            
+            # Depth histogram
+            valid = depth[(depth > 0) & ~np.isnan(depth) & ~np.isinf(depth)]
+            if len(valid) > 0:
+                axes[col].hist(valid.flatten(), bins=80, color='steelblue',
+                               edgecolor='none', alpha=0.85)
+                axes[col].axvline(np.median(valid), color='red', ls='--', lw=1.2,
+                                  label=f'median={np.median(valid):.2f}m')
+                axes[col].legend(fontsize=8)
+            axes[col].set_title('Depth Histogram')
+            axes[col].set_xlabel('Depth (m)')
+            axes[col].set_ylabel('Pixel count')
+            
+            # Stats annotation
+            stats_str = (
+                f"std={info.get('depth_std', 0):.3f}m  "
+                f"IQR={info.get('depth_iqr', 0):.3f}m  "
+                f"conc={info.get('concentrated_ratio', 0):.2%}"
+            )
+            fig.suptitle(
+                f"[WALL] {scene_id} / step {step_idx:03d}\n{stats_str}",
+                fontsize=11, fontweight='bold')
+            fig.tight_layout(rect=[0, 0, 1, 0.92])
+            
+            out_path = os.path.join(img_dir,
+                                    f'{i:03d}_{scene_id}_step{step_idx:03d}.png')
+            fig.savefig(out_path, dpi=120, bbox_inches='tight')
+            plt.close(fig)
+            saved += 1
+        
+        if saved > 0:
+            print(f"Wall sample images saved to: {img_dir}/ ({saved} images)")
+    
     def _get_cache_path(self):
         """Build a deterministic cache file path based on dataset config + split."""
         key_str = (
             f"{self.base_dir}|{self.split}|{self.depth_type}|{self.input_type}|"
             f"{self.input_image_type}|"
             f"{getattr(self.cfg.dataset, 'max_no_depth_ratio', 0.1)}|"
+            f"{self.filter_wall_samples}|{self.wall_depth_std_thresh}|"
+            f"{self.wall_concentration_thresh}|{self.wall_depth_range_thresh}|"
             f"{sorted(s for s, _ in self.samples)[:3]}|{len(self.samples)}"
         )
         h = hashlib.md5(key_str.encode()).hexdigest()[:12]
@@ -230,7 +442,7 @@ class SoundSpacesDataset(Dataset):
 
     def _verify_single_sample(self, sample, max_no_depth_ratio):
         """Verify a single sample (designed for parallel execution).
-        Returns (scene_id, step_idx, status) where status is 'valid', 'missing', or 'invalid_depth'."""
+        Returns (scene_id, step_idx, status, info) where status is 'valid', 'missing', 'invalid_depth', or 'wall_sample'."""
         scene_id, step_idx = sample
         scene_dir = os.path.join(self.base_dir, scene_id)
 
@@ -249,7 +461,7 @@ class SoundSpacesDataset(Dataset):
                         rgb_path = os.path.join(d, f'pinhole_{step_idx:03d}.png')
                         break
             if rgb_path is None or not os.path.exists(rgb_path):
-                return (scene_id, step_idx, 'missing')
+                return (scene_id, step_idx, 'missing', None)
             input_path = rgb_path
         else:
             audio_wav_dir = os.path.join(scene_dir, 'audio_wav')
@@ -260,16 +472,16 @@ class SoundSpacesDataset(Dataset):
             elif os.path.exists(audio_dir):
                 audio_path = os.path.join(audio_dir, expected)
             else:
-                return (scene_id, step_idx, 'missing')
+                return (scene_id, step_idx, 'missing', None)
             if not os.path.exists(audio_path):
-                return (scene_id, step_idx, 'missing')
+                return (scene_id, step_idx, 'missing', None)
             input_path = audio_path
 
         # --- Check depth file ---
         if self.depth_type == 'erp':
             erp_depth_dir = os.path.join(scene_dir, 'erp_depth')
             if not os.path.exists(erp_depth_dir):
-                return (scene_id, step_idx, 'missing')
+                return (scene_id, step_idx, 'missing', None)
             depth_path = os.path.join(erp_depth_dir, f'erp_depth_{step_idx:03d}.npy')
         else:
             for d, fmt in [(os.path.join(scene_dir, 'pinhole_depth'), f'pinhole_depth_{step_idx:03d}.npy'),
@@ -278,10 +490,10 @@ class SoundSpacesDataset(Dataset):
                     depth_path = os.path.join(d, fmt)
                     break
             else:
-                return (scene_id, step_idx, 'missing')
+                return (scene_id, step_idx, 'missing', None)
 
         if not os.path.exists(input_path) or not os.path.exists(depth_path):
-            return (scene_id, step_idx, 'missing')
+            return (scene_id, step_idx, 'missing', None)
 
         # --- Check no-depth ratio (mmap to avoid full copy) ---
         try:
@@ -289,10 +501,20 @@ class SoundSpacesDataset(Dataset):
             no_depth_mask = (depth <= 0.0) | np.isnan(depth) | np.isinf(depth)
             no_depth_ratio = np.sum(no_depth_mask) / depth.size if depth.size > 0 else 1.0
             if no_depth_ratio >= max_no_depth_ratio:
-                return (scene_id, step_idx, 'invalid_depth')
-            return (scene_id, step_idx, 'valid')
+                return (scene_id, step_idx, 'invalid_depth', None)
+            # --- Wall sample detection (strict AND criteria) ---
+            if self.filter_wall_samples:
+                is_wall, wall_stats = self._is_wall_depth(
+                    depth,
+                    std_thresh=self.wall_depth_std_thresh,
+                    concentration_thresh=self.wall_concentration_thresh,
+                    range_thresh=self.wall_depth_range_thresh,
+                )
+                if is_wall:
+                    return (scene_id, step_idx, 'wall_sample', wall_stats)
+            return (scene_id, step_idx, 'valid', None)
         except Exception:
-            return (scene_id, step_idx, 'missing')
+            return (scene_id, step_idx, 'missing', None)
 
     def _verify_files(self):
         """Verify that required files exist for all samples and filter out samples with too many invalid depth pixels.
@@ -305,7 +527,8 @@ class SoundSpacesDataset(Dataset):
             try:
                 with open(cache_path, 'rb') as f:
                     cached = pickle.load(f)
-                if cached.get('max_no_depth_ratio') == max_no_depth_ratio:
+                if (cached.get('max_no_depth_ratio') == max_no_depth_ratio and
+                    cached.get('filter_wall_samples') == self.filter_wall_samples):
                     self.samples = cached['valid_samples']
                     print(f"Loaded {len(self.samples)} verified samples from cache ({os.path.basename(cache_path)})")
                     return
@@ -320,15 +543,25 @@ class SoundSpacesDataset(Dataset):
         valid_samples = []
         missing_count = 0
         invalid_depth_count = 0
+        wall_count = 0
+        wall_samples_info = []
 
         with ThreadPoolExecutor(max_workers=num_workers) as pool:
             futures = {pool.submit(self._verify_single_sample, s, max_no_depth_ratio): s for s in self.samples}
             for fut in as_completed(futures):
-                scene_id, step_idx, status = fut.result()
+                scene_id, step_idx, status, info = fut.result()
                 if status == 'valid':
                     valid_samples.append((scene_id, step_idx))
                 elif status == 'missing':
                     missing_count += 1
+                elif status == 'wall_sample':
+                    wall_count += 1
+                    if info:
+                        wall_samples_info.append({
+                            'scene_id': scene_id,
+                            'step_idx': int(step_idx),
+                            **info
+                        })
                 else:
                     invalid_depth_count += 1
 
@@ -338,6 +571,15 @@ class SoundSpacesDataset(Dataset):
             print(f"Warning: {missing_count} samples have missing files")
         if invalid_depth_count > 0:
             print(f"Warning: {invalid_depth_count} samples filtered out due to no-depth ratio >= {max_no_depth_ratio*100:.1f}%")
+        if wall_count > 0:
+            print(f"Warning: {wall_count} samples filtered as wall-facing "
+                  f"(std<{self.wall_depth_std_thresh}m, "
+                  f"concentration>{self.wall_concentration_thresh}, "
+                  f"IQR<{self.wall_depth_range_thresh}m)")
+            # Save up to 50 wall samples to reference file for inspection
+            # Sort by concentration ratio (descending) to show the most obvious wall samples first
+            wall_samples_info.sort(key=lambda x: x.get('concentrated_ratio', 0), reverse=True)
+            self._save_wall_samples_reference(wall_samples_info[:50])
 
         valid_samples.sort(key=lambda x: (x[0], x[1]))
         self.samples = valid_samples
@@ -346,7 +588,11 @@ class SoundSpacesDataset(Dataset):
         # --- Save to cache ---
         try:
             with open(cache_path, 'wb') as f:
-                pickle.dump({'valid_samples': valid_samples, 'max_no_depth_ratio': max_no_depth_ratio}, f)
+                pickle.dump({
+                    'valid_samples': valid_samples,
+                    'max_no_depth_ratio': max_no_depth_ratio,
+                    'filter_wall_samples': self.filter_wall_samples,
+                }, f)
             print(f"Verification cache saved to {os.path.basename(cache_path)}")
         except Exception as e:
             print(f"Warning: Failed to save verification cache: {e}")
