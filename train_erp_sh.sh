@@ -88,38 +88,38 @@ echo "Training: Baseline UNet Audio -> Pinhole depth"
 echo "Loss: BerHu + GradientLoss (same as SH for fair comparison)"
 echo "=========================================="
 
-# python3 train.py \
-#     mode.mode=train \
-#     mode.experiment_name=soundspaces_audio_pinhole_baseline_v2_20260211 \
-#     mode.batch_size=16 \
-#     mode.epochs=150 \
-#     mode.learning_rate=0.0003 \
-#     mode.optimizer=AdamW \
-#     mode.criterion=BerHu \
-#     mode.use_grad_loss=True \
-#     mode.grad_loss_weight=0.5 \
-#     mode.validation=True \
-#     mode.validation_iter=2 \
-#     mode.saving_checkpoints=10 \
-#     mode.print_tensorboard=50 \
-#     mode.shuffle=True \
-#     mode.num_threads=4 \
-#     dataset.name=soundspaces \
-#     dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
-#     dataset.use_same_samples_all_splits=False \
-#     dataset.single_scene_test_mode=False \
-#     dataset.input_type=audio \
-#     dataset.audio_format=spectrogram \
-#     dataset.preprocess=resize \
-#     dataset.depth_norm=True \
-#     'dataset.images_size=[256,512]' \
-#     dataset.min_depth=0.01 \
-#     dataset.max_depth=10.0 \
-#     dataset.depth_type=pinhole \
-#     dataset.use_augmentation=True \
-#     model.generator=unet_256
+python3 train.py \
+    mode.mode=train \
+    mode.experiment_name=soundspaces_audio_pinhole_baseline_v2_20260211 \
+    mode.batch_size=16 \
+    mode.epochs=150 \
+    mode.learning_rate=0.0003 \
+    mode.optimizer=AdamW \
+    mode.criterion=BerHu \
+    mode.use_grad_loss=True \
+    mode.grad_loss_weight=0.5 \
+    mode.validation=True \
+    mode.validation_iter=2 \
+    mode.saving_checkpoints=10 \
+    mode.print_tensorboard=50 \
+    mode.shuffle=True \
+    mode.num_threads=4 \
+    dataset.name=soundspaces \
+    dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
+    dataset.use_same_samples_all_splits=False \
+    dataset.single_scene_test_mode=False \
+    dataset.input_type=audio \
+    dataset.audio_format=spectrogram \
+    dataset.preprocess=resize \
+    dataset.depth_norm=True \
+    'dataset.images_size=[256,512]' \
+    dataset.min_depth=0.01 \
+    dataset.max_depth=10.0 \
+    dataset.depth_type=pinhole \
+    dataset.use_augmentation=True \
+    model.generator=unet_256
 
-# echo "Baseline Pinhole training completed!"
+echo "Baseline Pinhole training completed!"
 
 # ==========================================
 # (3) Baseline UNet -> ERP depth (BerHu + Gradient, fair comparison)
@@ -166,90 +166,90 @@ echo "Baseline ERP training completed!"
 # ==========================================
 # (4) Oracle: Pinhole RGB -> Pinhole depth (upper bound)
 # ==========================================
-# echo ""
-# echo "=========================================="
-# echo "Training: Oracle Pinhole RGB -> Pinhole depth"
-# echo "Input: Pinhole RGB image (3 channels)"
-# echo "Output: Pinhole depth map"
-# echo "Loss: BerHu + GradientLoss"
-# echo "=========================================="
+echo ""
+echo "=========================================="
+echo "Training: Oracle Pinhole RGB -> Pinhole depth"
+echo "Input: Pinhole RGB image (3 channels)"
+echo "Output: Pinhole depth map"
+echo "Loss: BerHu + GradientLoss"
+echo "=========================================="
 
-# python3 train.py \
-#     mode.mode=train \
-#     mode.experiment_name=soundspaces_oracle_pinhole_v2_20260211 \
-#     mode.batch_size=16 \
-#     mode.epochs=150 \
-#     mode.learning_rate=0.0003 \
-#     mode.optimizer=AdamW \
-#     mode.criterion=BerHu \
-#     mode.use_grad_loss=True \
-#     mode.grad_loss_weight=0.5 \
-#     mode.validation=True \
-#     mode.validation_iter=2 \
-#     mode.saving_checkpoints=10 \
-#     mode.print_tensorboard=50 \
-#     mode.shuffle=True \
-#     mode.num_threads=4 \
-#     dataset.name=soundspaces \
-#     dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
-#     dataset.use_same_samples_all_splits=False \
-#     dataset.single_scene_test_mode=False \
-#     dataset.input_type=rgb \
-#     dataset.input_image_type=pinhole \
-#     dataset.preprocess=resize \
-#     dataset.depth_norm=True \
-#     'dataset.images_size=[256,512]' \
-#     dataset.min_depth=0.01 \
-#     dataset.max_depth=10.0 \
-#     dataset.depth_type=pinhole \
-#     dataset.use_augmentation=True \
-#     model.generator=oracle_pinhole_256
+python3 train.py \
+    mode.mode=train \
+    mode.experiment_name=soundspaces_oracle_pinhole_v2_20260211 \
+    mode.batch_size=16 \
+    mode.epochs=150 \
+    mode.learning_rate=0.0003 \
+    mode.optimizer=AdamW \
+    mode.criterion=BerHu \
+    mode.use_grad_loss=True \
+    mode.grad_loss_weight=0.5 \
+    mode.validation=True \
+    mode.validation_iter=2 \
+    mode.saving_checkpoints=10 \
+    mode.print_tensorboard=50 \
+    mode.shuffle=True \
+    mode.num_threads=4 \
+    dataset.name=soundspaces \
+    dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
+    dataset.use_same_samples_all_splits=False \
+    dataset.single_scene_test_mode=False \
+    dataset.input_type=rgb \
+    dataset.input_image_type=pinhole \
+    dataset.preprocess=resize \
+    dataset.depth_norm=True \
+    'dataset.images_size=[256,512]' \
+    dataset.min_depth=0.01 \
+    dataset.max_depth=10.0 \
+    dataset.depth_type=pinhole \
+    dataset.use_augmentation=True \
+    model.generator=oracle_pinhole_256
 
-# echo "Oracle Pinhole training completed!"
+echo "Oracle Pinhole training completed!"
 
-# # ==========================================
-# # (5) Oracle: ERP RGB -> ERP depth (upper bound)
-# # ==========================================
-# echo ""
-# echo "=========================================="
-# echo "Training: Oracle ERP RGB -> ERP depth"
-# echo "Input: Panoramic (ERP) RGB image (3 channels)"
-# echo "Output: ERP depth map"
-# echo "Loss: BerHu + GradientLoss"
-# echo "=========================================="
+# ==========================================
+# (5) Oracle: ERP RGB -> ERP depth (upper bound)
+# ==========================================
+echo ""
+echo "=========================================="
+echo "Training: Oracle ERP RGB -> ERP depth"
+echo "Input: Panoramic (ERP) RGB image (3 channels)"
+echo "Output: ERP depth map"
+echo "Loss: BerHu + GradientLoss"
+echo "=========================================="
 
-# python3 train.py \
-#     mode.mode=train \
-#     mode.experiment_name=soundspaces_oracle_erp_v2_20260211 \
-#     mode.batch_size=16 \
-#     mode.epochs=150 \
-#     mode.learning_rate=0.0003 \
-#     mode.optimizer=AdamW \
-#     mode.criterion=BerHu \
-#     mode.use_grad_loss=True \
-#     mode.grad_loss_weight=0.5 \
-#     mode.validation=True \
-#     mode.validation_iter=2 \
-#     mode.saving_checkpoints=10 \
-#     mode.print_tensorboard=50 \
-#     mode.shuffle=True \
-#     mode.num_threads=4 \
-#     dataset.name=soundspaces \
-#     dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
-#     dataset.use_same_samples_all_splits=False \
-#     dataset.single_scene_test_mode=False \
-#     dataset.input_type=rgb \
-#     dataset.input_image_type=erp \
-#     dataset.preprocess=resize \
-#     dataset.depth_norm=True \
-#     'dataset.images_size=[256,512]' \
-#     dataset.min_depth=0.01 \
-#     dataset.max_depth=10.0 \
-#     dataset.depth_type=erp \
-#     dataset.use_augmentation=True \
-#     model.generator=oracle_erp_256
+python3 train.py \
+    mode.mode=train \
+    mode.experiment_name=soundspaces_oracle_erp_v2_20260211 \
+    mode.batch_size=16 \
+    mode.epochs=150 \
+    mode.learning_rate=0.0003 \
+    mode.optimizer=AdamW \
+    mode.criterion=BerHu \
+    mode.use_grad_loss=True \
+    mode.grad_loss_weight=0.5 \
+    mode.validation=True \
+    mode.validation_iter=2 \
+    mode.saving_checkpoints=10 \
+    mode.print_tensorboard=50 \
+    mode.shuffle=True \
+    mode.num_threads=4 \
+    dataset.name=soundspaces \
+    dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
+    dataset.use_same_samples_all_splits=False \
+    dataset.single_scene_test_mode=False \
+    dataset.input_type=rgb \
+    dataset.input_image_type=erp \
+    dataset.preprocess=resize \
+    dataset.depth_norm=True \
+    'dataset.images_size=[256,512]' \
+    dataset.min_depth=0.01 \
+    dataset.max_depth=10.0 \
+    dataset.depth_type=erp \
+    dataset.use_augmentation=True \
+    model.generator=oracle_erp_256
 
-# echo "Oracle ERP training completed!"
-# echo "=========================================="
-# echo "All training completed!"
-# echo "=========================================="
+echo "Oracle ERP training completed!"
+echo "=========================================="
+echo "All training completed!"
+echo "=========================================="

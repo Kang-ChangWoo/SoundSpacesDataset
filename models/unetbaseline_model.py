@@ -115,49 +115,35 @@ def define_G(cfg, input_nc, output_nc, ngf, netG, norm='batch', use_dropout=Fals
     elif netG == 'unet_256':
         net = UnetGenerator(cfg, input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256_sh':
-        from .v260120_unet_sh_model import UnetSHGenerator
+        from .unet_sh_model import UnetSHGenerator
         image_size = tuple(int(s) for s in cfg.dataset.images_size)
         sh_degree = getattr(cfg.model, 'sh_degree', 10)
         net = UnetSHGenerator(cfg, input_nc, output_nc, num_downs=8, ngf=ngf,
                               norm_layer=norm_layer, use_dropout=use_dropout,
                               sh_degree=sh_degree, image_size=image_size)
     elif netG == 'unet_128_sh':
-        from .v260120_unet_sh_model import UnetSHGenerator
+        from .unet_sh_model import UnetSHGenerator
         image_size = tuple(int(s) for s in cfg.dataset.images_size)
         sh_degree = getattr(cfg.model, 'sh_degree', 10)
         net = UnetSHGenerator(cfg, input_nc, output_nc, num_downs=7, ngf=ngf,
                               norm_layer=norm_layer, use_dropout=use_dropout,
                               sh_degree=sh_degree, image_size=image_size)
     elif netG == 'oracle_pinhole_256':
-        from .v260210_oracle_pinhole_model import OraclePinholeGenerator
+        from .oracle_pinhole_model import OraclePinholeGenerator
         net = OraclePinholeGenerator(cfg, output_nc, num_downs=8, ngf=ngf,
                                      norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'oracle_pinhole_128':
-        from .v260210_oracle_pinhole_model import OraclePinholeGenerator
+        from .oracle_pinhole_model import OraclePinholeGenerator
         net = OraclePinholeGenerator(cfg, output_nc, num_downs=7, ngf=ngf,
                                      norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'oracle_erp_256':
-        from .v260210_oracle_erp_model import OracleERPGenerator
+        from .oracle_erp_model import OracleERPGenerator
         net = OracleERPGenerator(cfg, output_nc, num_downs=8, ngf=ngf,
                                   norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'oracle_erp_128':
-        from .v260210_oracle_erp_model import OracleERPGenerator
+        from .oracle_erp_model import OracleERPGenerator
         net = OracleERPGenerator(cfg, output_nc, num_downs=7, ngf=ngf,
                                   norm_layer=norm_layer, use_dropout=use_dropout)
-    elif netG == 'unet_256_sh_v2':
-        from .v260217_unet_sh_model import UnetSHv2Generator
-        image_size = tuple(int(s) for s in cfg.dataset.images_size)
-        sh_degree = getattr(cfg.model, 'sh_degree', 10)
-        net = UnetSHv2Generator(cfg, input_nc, output_nc, num_downs=8, ngf=ngf,
-                                norm_layer=norm_layer, use_dropout=use_dropout,
-                                sh_degree=sh_degree, image_size=image_size)
-    elif netG == 'unet_128_sh_v2':
-        from .v260217_unet_sh_model import UnetSHv2Generator
-        image_size = tuple(int(s) for s in cfg.dataset.images_size)
-        sh_degree = getattr(cfg.model, 'sh_degree', 10)
-        net = UnetSHv2Generator(cfg, input_nc, output_nc, num_downs=7, ngf=ngf,
-                                norm_layer=norm_layer, use_dropout=use_dropout,
-                                sh_degree=sh_degree, image_size=image_size)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)

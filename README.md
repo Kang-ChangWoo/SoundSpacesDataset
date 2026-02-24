@@ -48,14 +48,7 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions including:
 
 ## Configuration
 
-1. **Update dataset path**: either set `SOUNDSPACES_DATASET_DIR` (recommended) or edit `conf/dataset/soundspaces.yaml`.
-
-   - Using env var (server example: dataset in `/root/storage/matterport3d`):
-     ```bash
-     export SOUNDSPACES_DATASET_DIR=/root/storage/matterport3d
-     ```
-
-   - Using YAML (fallback):
+1. **Update dataset path**: Edit `conf/dataset/soundspaces.yaml` and set `dataset_dir` to your dataset folder:
    ```yaml
    dataset_dir: /home/rvi-lab/workspace/sound-spaces/dataset
    ```
@@ -90,11 +83,6 @@ Train the model:
 python train.py mode.experiment_name=my_experiment
 ```
 
-If you're on a server and your dataset is under `/root/storage/matterport3d`, you can use the provided server wrappers:
-```bash
-bash train_erp_sh_server.sh
-```
-
 Or update the config files and run:
 ```bash
 python train.py
@@ -112,11 +100,6 @@ The training script will:
 Test the model on test or validation set:
 ```bash
 python test.py mode.experiment_name=my_experiment mode.checkpoints=50 mode.eval_on=test
-```
-
-Server wrapper (evaluates the v2 experiments; default uses `EVAL_EPOCH=best`):
-```bash
-bash eval_erp_sh_server.sh
 ```
 
 Results will be saved in `./eval/{dataset_name}/{eval_on}/`

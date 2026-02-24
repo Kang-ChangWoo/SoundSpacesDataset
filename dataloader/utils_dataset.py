@@ -23,41 +23,24 @@ def get_transform(cfg, convert=False, depth_norm=False):
         # Convert data to Tensor type
         transform_list += [transforms.ToTensor()]
 
-    # Parse target size (shared between resize and crop modes)
-    images_size = cfg.dataset.images_size
-    # Handle OmegaConf ListConfig and regular list/tuple
-    if hasattr(images_size, '__iter__') and not isinstance(images_size, (str, bytes)):
-        # Convert to tuple (handles list, tuple, ListConfig, etc.)
-        try:
-            target_size = tuple(int(x) for x in images_size)  # (H, W)
-        except (TypeError, ValueError):
-            # Fallback: try to convert single value
-            target_size = (int(images_size), int(images_size))
-    else:
-        # Single value (square)
-        target_size = (int(images_size), int(images_size))
-
-    if 'crop' in cfg.dataset.preprocess:
-        # Resize maintaining aspect ratio (shorter edge to max(target_size)),
-        # then center crop to exact target_size.
-        # This avoids aspect ratio distortion (no pixel stretching/squishing).
-        max_dim = max(target_size)
-        if USE_INTERPOLATION_MODE:
-            transform_list.append(transforms.Resize(
-                max_dim,
-                interpolation=InterpolationMode.NEAREST
-            ))
-        else:
-            transform_list.append(transforms.Resize(
-                max_dim,
-                interpolation=0
-            ))
-        transform_list.append(transforms.CenterCrop(target_size))
-
-    elif 'resize' in cfg.dataset.preprocess:
+    if 'resize' in cfg.dataset.preprocess:
         # Resize to specified image size (e.g., 192x384 or 256x256)
         # Use nearest neighbor interpolation (sampling) instead of bilinear interpolation
         # Nearest neighbor just picks the closest pixel value without blending
+        # Support both tuple (H, W) and single value (square)
+        images_size = cfg.dataset.images_size
+        # Handle OmegaConf ListConfig and regular list/tuple
+        if hasattr(images_size, '__iter__') and not isinstance(images_size, (str, bytes)):
+            # Convert to tuple (handles list, tuple, ListConfig, etc.)
+            try:
+                target_size = tuple(int(x) for x in images_size)  # (H, W)
+            except (TypeError, ValueError):
+                # Fallback: try to convert single value
+                target_size = (int(images_size), int(images_size))
+        else:
+            # Single value (square)
+            target_size = (int(images_size), int(images_size))
+        
         if USE_INTERPOLATION_MODE:
             transform_list.append(transforms.Resize(
                 target_size,

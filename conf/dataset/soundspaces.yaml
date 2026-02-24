@@ -1,5 +1,5 @@
 name: soundspaces
-dataset_dir: ${oc.env:SOUNDSPACES_DATASET_DIR,/home/rvi-lab/workspace/sound-spaces/dataset}  # Path to dataset with scene directories
+dataset_dir: /home/rvi-lab/workspace/sound-spaces/dataset  # Path to dataset with scene directories
 
 # Single scene test mode - for quick testing with one scene
 single_scene_test_mode: False # If True, use only one scene and split samples 8:1:1 (train:val:test)
@@ -27,10 +27,3 @@ max_depth: 10.0 # Maximum depth value in meters (depths above this are clipped t
 use_augmentation: True # Enable augmentation (horizontal flip for RGB, channel swap for audio) during training
 depth_type: pinhole # Depth type: 'pinhole' or 'erp' (Equirectangular Projection) - used for ground truth depth
 max_no_depth_ratio: 0.1 # Maximum ratio of no-depth pixels (0.1 = 10%). Samples with no-depth ratio >= this value will be excluded from train/val/test
-
-# Wall sample filtering - remove samples where camera faces a wall (uniform depth distribution)
-# Strict AND criteria: ALL conditions must be met to classify as wall sample
-filter_wall_samples: False  # Set to True to enable wall sample filtering
-wall_depth_std_thresh: 0.3  # Max depth std (meters) for wall classification
-wall_concentration_thresh: 0.85  # Min fraction of pixels within ±0.3m of median depth
-wall_depth_range_thresh: 0.5  # Max IQR (interquartile range, meters) for wall classification

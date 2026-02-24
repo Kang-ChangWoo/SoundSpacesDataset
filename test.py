@@ -2,7 +2,7 @@ from dataloader.SoundSpaces_Dataset import SoundSpacesDataset
 
 from models.utils_models import *
 
-from models.v260120_unetbaseline_model import *
+from models.unetbaseline_model import *
 
 from utils_tensorboard import *
 from utils_criterion import compute_errors, get_valid_depth_mask, BerHuLoss
@@ -54,13 +54,7 @@ def main(cfg):
         raise Exception('Test can be done only on soundspaces dataset')
 
     print(f'Eval Dataset of {len(eval_set)} instances')
-    num_workers = cfg.mode.num_threads
-    use_pin = torch.cuda.is_available()
-    eval_loader = DataLoader(
-        eval_set, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=use_pin, persistent_workers=(num_workers > 0),
-        prefetch_factor=4 if num_workers > 0 else None,
-    )
+    eval_loader = DataLoader(eval_set, batch_size=batch_size, shuffle=False, num_workers=cfg.mode.num_threads) 
 
     # ---------- Load Model ----------
     # Determine input channels based on input type
@@ -98,9 +92,9 @@ def main(cfg):
                              cfg.mode.optimizer + '_' + cfg.mode.experiment_name)
         
         if str(load_epoch) == 'best':
-            checkpoint_path = './outputs/' + experiment_name + '/best_model.pth'
+            checkpoint_path = './checkpoints/' + experiment_name + '/best_model.pth'
         else:
-            checkpoint_path = './outputs/' + experiment_name + '/checkpoint_' + str(load_epoch) + '.pth'
+            checkpoint_path = './checkpoints/' + experiment_name + '/checkpoint_' + str(load_epoch) + '.pth'
         print(f'Loading checkpoint from: {checkpoint_path}')
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint["state_dict"])

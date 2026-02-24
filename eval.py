@@ -4,7 +4,7 @@ Evaluation script - similar to test.py but can be used for detailed evaluation
 from dataloader.SoundSpaces_Dataset import SoundSpacesDataset
 
 from models.utils_models import *
-from models.v260120_unetbaseline_model import *
+from models.unetbaseline_model import *
 from utils_criterion import compute_errors, get_valid_depth_mask, BerHuLoss
 
 import os 
