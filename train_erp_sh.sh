@@ -26,9 +26,22 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Dataset path: server vs local
+if [ -d "/root/storage/matterport3d" ]; then
+    DATASET_DIR="/root/storage/matterport3d"
+    echo "[ENV] Server detected -> dataset: $DATASET_DIR"
+else
+    DATASET_DIR="/home/rvi-lab/workspace/sound-spaces/dataset"
+    echo "[ENV] Local detected -> dataset: $DATASET_DIR"
+fi
+
 # Activate conda environment
 source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate soundspaces_dataset
+if [ -d "/root/storage/matterport3d" ]; then
+    conda activate ss
+else
+    conda activate soundspaces_dataset
+fi
 
 # ==========================================
 # (1) UNet+SH -> ERP depth (BerHu + Gradient + SH aux)
@@ -60,7 +73,7 @@ python3 train.py \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
-    dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
+    dataset.dataset_dir=${DATASET_DIR} \
     dataset.use_same_samples_all_splits=False \
     dataset.single_scene_test_mode=False \
     dataset.input_type=audio \
@@ -105,7 +118,7 @@ python3 train.py \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
-    dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
+    dataset.dataset_dir=${DATASET_DIR} \
     dataset.use_same_samples_all_splits=False \
     dataset.single_scene_test_mode=False \
     dataset.input_type=audio \
@@ -147,7 +160,7 @@ python3 train.py \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
-    dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
+    dataset.dataset_dir=${DATASET_DIR} \
     dataset.use_same_samples_all_splits=False \
     dataset.single_scene_test_mode=False \
     dataset.input_type=audio \
@@ -191,7 +204,7 @@ python3 train.py \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
-    dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
+    dataset.dataset_dir=${DATASET_DIR} \
     dataset.use_same_samples_all_splits=False \
     dataset.single_scene_test_mode=False \
     dataset.input_type=rgb \
@@ -235,7 +248,7 @@ python3 train.py \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
-    dataset.dataset_dir=/home/rvi-lab/workspace/sound-spaces/dataset \
+    dataset.dataset_dir=${DATASET_DIR} \
     dataset.use_same_samples_all_splits=False \
     dataset.single_scene_test_mode=False \
     dataset.input_type=rgb \
