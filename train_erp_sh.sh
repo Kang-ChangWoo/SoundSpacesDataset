@@ -21,6 +21,8 @@
 #   - Fair comparison: both SH and baseline use BerHu + GradientLoss
 #   - epochs 100 -> 150
 #
+# All 5 experiments run in parallel on separate GPUs (GPU 0-4)
+#
 # Adapted from HUSH (https://github.com/vision3d-lab/HUSH)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,20 +45,22 @@ else
     conda activate soundspaces_dataset
 fi
 
-# ==========================================
-# (1) UNet+SH -> ERP depth (BerHu + Gradient + SH aux)
-# ==========================================
+# Log directory
+LOG_DIR="${SCRIPT_DIR}/server_logs"
+mkdir -p "$LOG_DIR"
+
 echo "=========================================="
-echo "Training UNet+SH with Audio Spectrogram input"
-echo "Output: ERP depth map"
-echo "Loss: BerHu + GradientLoss + SH Auxiliary"
-echo "SH: degree=10, 55 coeffs, cross-attention fusion"
-echo "LR: 0.0003"
+echo "Launching 5 experiments in parallel (GPU 0-4)"
+echo "Logs: ${LOG_DIR}/"
 echo "=========================================="
 
-python3 train.py \
+# ==========================================
+# (1) UNet+SH -> ERP depth (BerHu + Gradient + SH aux) [GPU 0]
+# ==========================================
+echo "[GPU 0] UNet+SH Audio -> ERP depth"
+CUDA_VISIBLE_DEVICES=0 python3 train.py \
     mode.mode=train \
-    mode.experiment_name=soundspaces_audio_erp_sh_v2_20260211 \
+    mode.experiment_name=soundspaces_audio_erp_sh_v2_20260224 \
     mode.batch_size=16 \
     mode.epochs=150 \
     mode.learning_rate=0.0003 \
@@ -86,24 +90,17 @@ python3 train.py \
     dataset.depth_type=erp \
     dataset.use_augmentation=True \
     model.generator=unet_256_sh \
-    model.sh_degree=10
-
-echo "=========================================="
-echo "UNet+SH training completed!"
-echo "=========================================="
+    model.sh_degree=10 \
+    > "${LOG_DIR}/exp1_unet_sh_erp.log" 2>&1 &
+PID1=$!
 
 # ==========================================
-# (2) Baseline UNet -> Pinhole depth (BerHu + Gradient, fair comparison)
+# (2) Baseline UNet -> Pinhole depth (BerHu + Gradient, fair comparison) [GPU 1]
 # ==========================================
-echo ""
-echo "=========================================="
-echo "Training: Baseline UNet Audio -> Pinhole depth"
-echo "Loss: BerHu + GradientLoss (same as SH for fair comparison)"
-echo "=========================================="
-
-python3 train.py \
+echo "[GPU 1] Baseline UNet Audio -> Pinhole depth"
+CUDA_VISIBLE_DEVICES=1 python3 train.py \
     mode.mode=train \
-    mode.experiment_name=soundspaces_audio_pinhole_baseline_v2_20260211 \
+    mode.experiment_name=soundspaces_audio_pinhole_baseline_v2_20260224 \
     mode.batch_size=16 \
     mode.epochs=150 \
     mode.learning_rate=0.0003 \
@@ -130,22 +127,17 @@ python3 train.py \
     dataset.max_depth=10.0 \
     dataset.depth_type=pinhole \
     dataset.use_augmentation=True \
-    model.generator=unet_256
-
-echo "Baseline Pinhole training completed!"
+    model.generator=unet_256 \
+    > "${LOG_DIR}/exp2_baseline_pinhole.log" 2>&1 &
+PID2=$!
 
 # ==========================================
-# (3) Baseline UNet -> ERP depth (BerHu + Gradient, fair comparison)
+# (3) Baseline UNet -> ERP depth (BerHu + Gradient, fair comparison) [GPU 2]
 # ==========================================
-echo ""
-echo "=========================================="
-echo "Training: Baseline UNet Audio -> ERP depth"
-echo "Loss: BerHu + GradientLoss (same as SH for fair comparison)"
-echo "=========================================="
-
-python3 train.py \
+echo "[GPU 2] Baseline UNet Audio -> ERP depth"
+CUDA_VISIBLE_DEVICES=2 python3 train.py \
     mode.mode=train \
-    mode.experiment_name=soundspaces_audio_erp_baseline_v2_20260211 \
+    mode.experiment_name=soundspaces_audio_erp_baseline_v2_20260224 \
     mode.batch_size=16 \
     mode.epochs=150 \
     mode.learning_rate=0.0003 \
@@ -172,24 +164,17 @@ python3 train.py \
     dataset.max_depth=10.0 \
     dataset.depth_type=erp \
     dataset.use_augmentation=True \
-    model.generator=unet_256
-
-echo "Baseline ERP training completed!"
+    model.generator=unet_256 \
+    > "${LOG_DIR}/exp3_baseline_erp.log" 2>&1 &
+PID3=$!
 
 # ==========================================
-# (4) Oracle: Pinhole RGB -> Pinhole depth (upper bound)
+# (4) Oracle: Pinhole RGB -> Pinhole depth (upper bound) [GPU 3]
 # ==========================================
-echo ""
-echo "=========================================="
-echo "Training: Oracle Pinhole RGB -> Pinhole depth"
-echo "Input: Pinhole RGB image (3 channels)"
-echo "Output: Pinhole depth map"
-echo "Loss: BerHu + GradientLoss"
-echo "=========================================="
-
-python3 train.py \
+echo "[GPU 3] Oracle Pinhole RGB -> Pinhole depth"
+CUDA_VISIBLE_DEVICES=3 python3 train.py \
     mode.mode=train \
-    mode.experiment_name=soundspaces_oracle_pinhole_v2_20260211 \
+    mode.experiment_name=soundspaces_oracle_pinhole_v2_20260224 \
     mode.batch_size=16 \
     mode.epochs=150 \
     mode.learning_rate=0.0003 \
@@ -216,24 +201,17 @@ python3 train.py \
     dataset.max_depth=10.0 \
     dataset.depth_type=pinhole \
     dataset.use_augmentation=True \
-    model.generator=oracle_pinhole_256
-
-echo "Oracle Pinhole training completed!"
+    model.generator=oracle_pinhole_256 \
+    > "${LOG_DIR}/exp4_oracle_pinhole.log" 2>&1 &
+PID4=$!
 
 # ==========================================
-# (5) Oracle: ERP RGB -> ERP depth (upper bound)
+# (5) Oracle: ERP RGB -> ERP depth (upper bound) [GPU 4]
 # ==========================================
-echo ""
-echo "=========================================="
-echo "Training: Oracle ERP RGB -> ERP depth"
-echo "Input: Panoramic (ERP) RGB image (3 channels)"
-echo "Output: ERP depth map"
-echo "Loss: BerHu + GradientLoss"
-echo "=========================================="
-
-python3 train.py \
+echo "[GPU 4] Oracle ERP RGB -> ERP depth"
+CUDA_VISIBLE_DEVICES=4 python3 train.py \
     mode.mode=train \
-    mode.experiment_name=soundspaces_oracle_erp_v2_20260211 \
+    mode.experiment_name=soundspaces_oracle_erp_v2_20260224 \
     mode.batch_size=16 \
     mode.epochs=150 \
     mode.learning_rate=0.0003 \
@@ -260,9 +238,23 @@ python3 train.py \
     dataset.max_depth=10.0 \
     dataset.depth_type=erp \
     dataset.use_augmentation=True \
-    model.generator=oracle_erp_256
+    model.generator=oracle_erp_256 \
+    > "${LOG_DIR}/exp5_oracle_erp.log" 2>&1 &
+PID5=$!
 
-echo "Oracle ERP training completed!"
+echo ""
+echo "=========================================="
+echo "All 5 experiments launched:"
+echo "  [GPU 0] PID ${PID1} - UNet+SH ERP        -> ${LOG_DIR}/exp1_unet_sh_erp.log"
+echo "  [GPU 1] PID ${PID2} - Baseline Pinhole    -> ${LOG_DIR}/exp2_baseline_pinhole.log"
+echo "  [GPU 2] PID ${PID3} - Baseline ERP        -> ${LOG_DIR}/exp3_baseline_erp.log"
+echo "  [GPU 3] PID ${PID4} - Oracle Pinhole      -> ${LOG_DIR}/exp4_oracle_pinhole.log"
+echo "  [GPU 4] PID ${PID5} - Oracle ERP          -> ${LOG_DIR}/exp5_oracle_erp.log"
+echo "=========================================="
+echo "Waiting for all experiments to finish..."
+
+wait $PID1 $PID2 $PID3 $PID4 $PID5
+
 echo "=========================================="
 echo "All training completed!"
 echo "=========================================="
