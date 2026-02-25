@@ -39,7 +39,7 @@ EVAL_EPOCH=${EVAL_EPOCH:-best}
 EVAL_ON='test'  # 'test' or 'val'
 
 # Log directory
-LOG_DIR="${SCRIPT_DIR}/server_logs"
+LOG_DIR="${SCRIPT_DIR}/server_logs/$(date +%Y%m%d)_eval"
 mkdir -p "$LOG_DIR"
 
 echo "=========================================="

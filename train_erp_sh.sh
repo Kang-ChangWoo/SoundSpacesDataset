@@ -45,8 +45,11 @@ else
     conda activate soundspaces_dataset
 fi
 
+# Disable Python output buffering so logs appear in real-time
+export PYTHONUNBUFFERED=1
+
 # Log directory
-LOG_DIR="${SCRIPT_DIR}/server_logs"
+LOG_DIR="${SCRIPT_DIR}/server_logs/$(date +%Y%m%d)_train"
 mkdir -p "$LOG_DIR"
 
 echo "=========================================="
@@ -58,7 +61,7 @@ echo "=========================================="
 # (1) UNet+SH -> ERP depth (BerHu + Gradient + SH aux) [GPU 0]
 # ==========================================
 echo "[GPU 0] UNet+SH Audio -> ERP depth"
-CUDA_VISIBLE_DEVICES=0 python3 train.py \
+CUDA_VISIBLE_DEVICES=4 python3 train.py \
     mode.mode=train \
     mode.experiment_name=soundspaces_audio_erp_sh_v2_20260224 \
     mode.batch_size=16 \
@@ -73,13 +76,13 @@ CUDA_VISIBLE_DEVICES=0 python3 train.py \
     mode.validation=True \
     mode.validation_iter=2 \
     mode.saving_checkpoints=10 \
-    mode.print_tensorboard=50 \
+    mode.print_train_images=50 \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
     dataset.dataset_dir=${DATASET_DIR} \
-    dataset.use_same_samples_all_splits=False \
-    dataset.single_scene_test_mode=False \
+    dataset.use_same_samples_all_splits=False \ 
+    dataset.single_scene_test_mode=False \ 
     dataset.input_type=audio \
     dataset.audio_format=spectrogram \
     dataset.preprocess=resize \
@@ -98,7 +101,7 @@ PID1=$!
 # (2) Baseline UNet -> Pinhole depth (BerHu + Gradient, fair comparison) [GPU 1]
 # ==========================================
 echo "[GPU 1] Baseline UNet Audio -> Pinhole depth"
-CUDA_VISIBLE_DEVICES=1 python3 train.py \
+CUDA_VISIBLE_DEVICES=5 python3 train.py \
     mode.mode=train \
     mode.experiment_name=soundspaces_audio_pinhole_baseline_v2_20260224 \
     mode.batch_size=16 \
@@ -111,7 +114,7 @@ CUDA_VISIBLE_DEVICES=1 python3 train.py \
     mode.validation=True \
     mode.validation_iter=2 \
     mode.saving_checkpoints=10 \
-    mode.print_tensorboard=50 \
+    mode.print_train_images=50 \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
@@ -135,7 +138,7 @@ PID2=$!
 # (3) Baseline UNet -> ERP depth (BerHu + Gradient, fair comparison) [GPU 2]
 # ==========================================
 echo "[GPU 2] Baseline UNet Audio -> ERP depth"
-CUDA_VISIBLE_DEVICES=2 python3 train.py \
+CUDA_VISIBLE_DEVICES=6 python3 train.py \
     mode.mode=train \
     mode.experiment_name=soundspaces_audio_erp_baseline_v2_20260224 \
     mode.batch_size=16 \
@@ -148,7 +151,7 @@ CUDA_VISIBLE_DEVICES=2 python3 train.py \
     mode.validation=True \
     mode.validation_iter=2 \
     mode.saving_checkpoints=10 \
-    mode.print_tensorboard=50 \
+    mode.print_train_images=50 \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
@@ -172,7 +175,7 @@ PID3=$!
 # (4) Oracle: Pinhole RGB -> Pinhole depth (upper bound) [GPU 3]
 # ==========================================
 echo "[GPU 3] Oracle Pinhole RGB -> Pinhole depth"
-CUDA_VISIBLE_DEVICES=3 python3 train.py \
+CUDA_VISIBLE_DEVICES=7 python3 train.py \
     mode.mode=train \
     mode.experiment_name=soundspaces_oracle_pinhole_v2_20260224 \
     mode.batch_size=16 \
@@ -185,7 +188,7 @@ CUDA_VISIBLE_DEVICES=3 python3 train.py \
     mode.validation=True \
     mode.validation_iter=2 \
     mode.saving_checkpoints=10 \
-    mode.print_tensorboard=50 \
+    mode.print_train_images=50 \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
@@ -209,7 +212,7 @@ PID4=$!
 # (5) Oracle: ERP RGB -> ERP depth (upper bound) [GPU 4]
 # ==========================================
 echo "[GPU 4] Oracle ERP RGB -> ERP depth"
-CUDA_VISIBLE_DEVICES=4 python3 train.py \
+CUDA_VISIBLE_DEVICES=8 python3 train.py \
     mode.mode=train \
     mode.experiment_name=soundspaces_oracle_erp_v2_20260224 \
     mode.batch_size=16 \
@@ -222,7 +225,7 @@ CUDA_VISIBLE_DEVICES=4 python3 train.py \
     mode.validation=True \
     mode.validation_iter=2 \
     mode.saving_checkpoints=10 \
-    mode.print_tensorboard=50 \
+    mode.print_train_images=50 \
     mode.shuffle=True \
     mode.num_threads=4 \
     dataset.name=soundspaces \
