@@ -164,12 +164,17 @@ def main(cfg: DictConfig) -> None:
         }
     )
 
+    # Define wandb summary metrics (best abs_rel = lower is better)
+    wandb.define_metric("Val/ABS_REL", summary="min")
+    wandb.define_metric("Val/RMSE", summary="min")
+    wandb.define_metric("Val/DELTA1", summary="max")
+
     # Create output directory for validation plots
     val_output_dir = os.path.join('./outputs', experiment_name, 'validation_plots')
     os.makedirs(val_output_dir, exist_ok=True)
     print(f'Validation plots will be saved to: {val_output_dir}')
 
-    log_dir = './logs/' + experiment_name + '/'
+    log_dir = os.path.join('./outputs', experiment_name, 'logs') + '/'
     os.makedirs(log_dir, exist_ok=True)
     file = open(log_dir + "architecture.txt","w")
 
@@ -466,6 +471,8 @@ def main(cfg: DictConfig) -> None:
                     path_check = './checkpoints/' + experiment_name + '/'
                     os.makedirs(path_check, exist_ok=True)
                     torch.save(best_state, path_check + 'best_model.pth')
+                    wandb.run.summary["best_abs_rel"] = best_abs_rel
+                    wandb.run.summary["best_epoch"] = best_epoch
                     print(f'*** New best model saved at epoch {epoch} with abs_rel {best_abs_rel:.6f} ***')
 
                 # Log validation images to wandb
@@ -476,7 +483,7 @@ def main(cfg: DictConfig) -> None:
                 })
 
         # ------- Log training images to wandb periodically ------------
-        if epoch % cfg.mode.print_tensorboard == 0:
+        if epoch % cfg.mode.print_train_images == 0:
             wandb.log({
                 'Train/Pred_Depth': [wandb.Image(depth_pred[j, 0].detach().cpu().numpy(), caption=f'pred_{j}') for j in range(min(4, depth_pred.shape[0]))],
                 'Train/GT_Depth': [wandb.Image(gtdepth[j, 0].cpu().numpy(), caption=f'gt_{j}') for j in range(min(4, gtdepth.shape[0]))],
